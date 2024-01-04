@@ -222,6 +222,7 @@ namespace App10._2
         {
             if (e.RowIndex >= 0)
             {
+
                 int selectedInvoiceId = Convert.ToInt32(dataGridView1.Rows[e.RowIndex].Cells["invoice_id"].Value);
                 Form positionsForm = new Form();
                 DataGridView dataGridViewPositions = new DataGridView();
