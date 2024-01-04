@@ -21,7 +21,7 @@ namespace App10._2
     {
         SqlConnection conn;
         SqlCommand cmd;
-        SqlTransaction transaction; //
+        SqlTransaction transaction; 
         public Form1()
         {
             InitializeComponent();
@@ -56,65 +56,70 @@ namespace App10._2
         }
         private void button1_Click(object sender, EventArgs e)
         {
-            string query = "insert into invoice (number,value) values(@Value1,@Value2)";
-            cmd.CommandText = query;
-            cmd.Parameters.Clear();
-            cmd.Parameters.AddWithValue("@Value1", textBox1.Text);
-            cmd.Parameters.AddWithValue("@Value2", "0");
-            conn.Open();
-            cmd.ExecuteNonQuery();
-            cleardata();
-            conn.Close();
-            displaydata();
+            try
+            {
+                conn.Open();
+                transaction = conn.BeginTransaction();
+                string insertInvoiceQuery = "insert into invoice (number, value) values(@Value1, @Value2)";
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@Value1", textBox1.Text);
+                cmd.Parameters.AddWithValue("@Value2", "0");
+                cmd.Transaction = transaction;
+                ExecuteNonQueryWithTransaction(insertInvoiceQuery);
+                transaction.Commit();
+            }
+            catch (Exception ex)
+            {
+                transaction?.Rollback();
+                MessageBox.Show($"An error occurred: {ex.Message}");
+            }
+            finally
+            {
+                conn.Close();
+                displaydata();
+            }
         }
-
         private void button_delete_Click(object sender, EventArgs e)
         {
-            //string query = "delete invoice where invoice_id=@Value3";
-            //cmd.CommandText = query;
-            //cmd.Parameters.Clear();
-            //cmd.Parameters.AddWithValue("@Value3", textBox3.Text.ToString());
-            //conn.Open();
-            //cmd.ExecuteNonQuery();
-            //dataGridView1.DataSource = query;
-            //cleardata();
-            //conn.Close();
-            //displaydata();
-            int invoiceId = Convert.ToInt32(textBox3.Text);
-
-            // Delete records from invoice_pos table based on invoice_id
-            string posQuery = "DELETE FROM invoice_pos WHERE invoice_id = @Value3";
-            cmd.CommandText = posQuery;
-            cmd.Parameters.Clear();
-            cmd.Parameters.AddWithValue("@Value3", invoiceId);
-            conn.Open();
-            cmd.ExecuteNonQuery();
-            conn.Close();
-
-            // Delete record from invoice table based on invoice_id
-            string invoiceQuery = "DELETE FROM invoice WHERE invoice_id = @Value3";
-            cmd.CommandText = invoiceQuery;
-            cmd.Parameters.Clear();
-            cmd.Parameters.AddWithValue("@Value3", invoiceId);
-            conn.Open();
-            cmd.ExecuteNonQuery();
-            conn.Close();
-
-            cleardata();
-            displaydata();
+            try
+            {
+                int invoiceId = Convert.ToInt32(textBox3.Text);
+                conn.Open();
+                transaction = conn.BeginTransaction();
+                string posQuery = "DELETE FROM invoice_pos WHERE invoice_id = @Value3";
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@Value3", invoiceId);
+                cmd.Transaction = transaction;
+                ExecuteNonQueryWithTransaction(posQuery);
+                string invoiceQuery = "DELETE FROM invoice WHERE invoice_id = @Value3";
+                cmd.Parameters.Clear();
+                cmd.Parameters.AddWithValue("@Value3", invoiceId);
+                ExecuteNonQueryWithTransaction(invoiceQuery);
+                transaction.Commit();
+                MessageBox.Show("Invoice and related records deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                transaction?.Rollback();
+                MessageBox.Show($"An error occurred: {ex.Message}");
+            }
+            finally
+            {
+                conn.Close();
+                cleardata();
+                displaydata();
+            }
         }
-
         private void button3_Click(object sender, EventArgs e)
         {
             displaydata();
         }
-
         private void button_update_Click(object sender, EventArgs e)
         {
             conn.Open();
             SqlCommand cmd = conn.CreateCommand();
             cmd.CommandType = CommandType.Text;
-            cmd.CommandText = "update invoice set number='" + textBox1.Text + "',value='" + textBox2.Text.ToString() + "' where invoice_id='" + textBox3.Text.ToString() + "' ";
+            cmd.CommandText = "update invoice set number='" + textBox1.Text + "' where invoice_id='" + textBox3.Text.ToString() + "' ";
             cmd.ExecuteNonQuery();
             conn.Close();
             displaydata();
@@ -138,30 +143,34 @@ namespace App10._2
         }
         private void DisplaySumForInvoiceId(int invoiceId)
         {
-            conn.Open();
-            SqlCommand cmd = conn.CreateCommand();
-            cmd.CommandType = CommandType.Text;
-
-            // Calculate the sum of values for the specified invoice_id
-            cmd.CommandText = $"SELECT SUM(value) AS TotalSum FROM invoice_pos WHERE invoice_id = {invoiceId}";
-            SqlDataReader reader = cmd.ExecuteReader();
-
-            if (reader.Read())
+            try
             {
-                if (!reader.IsDBNull(reader.GetOrdinal("TotalSum")))
+                conn.Open();
+                transaction = conn.BeginTransaction();
+                cmd.CommandText = $"SELECT SUM(value) AS TotalSum FROM invoice_pos WHERE invoice_id = {invoiceId}";
+                cmd.Transaction = transaction;
+                SqlDataReader reader = cmd.ExecuteReader();
+                if (reader.Read())
                 {
-                    decimal totalSum = reader.GetDecimal(reader.GetOrdinal("TotalSum"));
-
-                    // Close the existing DataReader
-                    reader.Close();
-
-                    // Update the value column in the invoice table
-                    cmd.CommandText = $"UPDATE invoice SET value = {totalSum} WHERE invoice_id = {invoiceId}";
-                    cmd.ExecuteNonQuery();
+                    if (!reader.IsDBNull(reader.GetOrdinal("TotalSum")))
+                    {
+                        decimal totalSum = reader.GetDecimal(reader.GetOrdinal("TotalSum"));
+                        reader.Close();
+                        cmd.CommandText = $"UPDATE invoice SET value = {totalSum} WHERE invoice_id = {invoiceId}";
+                        cmd.ExecuteNonQuery();
+                    }
                 }
+                transaction.Commit();
             }
-
-            conn.Close();
+            catch (Exception ex)
+            {
+                transaction?.Rollback();
+                MessageBox.Show($"An error occurred: {ex.Message}");
+            }
+            finally
+            {
+                conn.Close();
+            }
         }
         private void button_pos_Click(object sender, EventArgs e)
         {
@@ -177,13 +186,52 @@ namespace App10._2
                 cmd.ExecuteNonQuery();
                 cleardata();
                 conn.Close();
-                //int invoiceId = Convert.ToInt32(textBox3.Text);
                 DisplaySumForInvoiceId(invoiceId);
                 displaydata();
             }
             else
             {
                 MessageBox.Show("Please enter a valid integer for Invoice ID.");
+            }
+        }
+        private DataTable GetInvoicePositions(int invoiceId)
+        {
+            DataTable dt = new DataTable();
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(conn.ConnectionString))
+                {
+                    connection.Open();
+                    string query = $"SELECT * FROM invoice_pos WHERE invoice_id = {invoiceId}";
+                    using (SqlCommand command = new SqlCommand(query, connection))
+                    {
+                        using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                        {
+                            adapter.Fill(dt);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"An error occurred: {ex.Message}");
+            }
+            return dt;
+        }
+        private void dataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0)
+            {
+                int selectedInvoiceId = Convert.ToInt32(dataGridView1.Rows[e.RowIndex].Cells["invoice_id"].Value);
+                Form positionsForm = new Form();
+                DataGridView dataGridViewPositions = new DataGridView();
+                dataGridViewPositions.Dock = DockStyle.Fill;
+                DataTable dt = GetInvoicePositions(selectedInvoiceId);
+                dataGridViewPositions.DataSource = dt;
+                positionsForm.Controls.Add(dataGridViewPositions);
+                positionsForm.Text = "Invoice Positions";
+                positionsForm.Size = new System.Drawing.Size(600, 400);
+                positionsForm.ShowDialog();
             }
         }
     }
